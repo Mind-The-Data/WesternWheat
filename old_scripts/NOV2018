@@ -1,0 +1,72 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Nov 27 17:39:27 2018
+
+@author: brian
+"""
+
+import pandas as pd
+import matplotlib.pyplot as plt 
+import numpy as np
+import pandas as pd
+import glob
+import scipy.stats as st
+
+
+######### nov 2018 data #########
+#################################
+#################################
+
+
+crop_id = 24
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/newdata_NOV_2018/'
+
+print "Reading CDL dataframe from harddrive..."
+dfCDL = pd.read_csv(data_path + "CDL" + crop_id + "morepoints.csv", 
+        usecols=['system:index','countyears','cropland_mode','first','system:indexviejuno'])
+dfCDL['year'] = dfCDL['system:index'].apply(lambda x: x.split("_")[0]).astype(int)
+dfCDL.rename(index=str, columns={'system:indexviejuno':'pixel'},inplace=True)
+
+dfMaster = None
+dfMaster = pd.DataFrame()
+print "Loading EM spectral dataframes..."
+for f in glob.glob(data_path + 'monthlyLSclass' + crop_id + '*'):
+    dfMaster = pd.concat((dfMaster,  pd.read_csv(f)))
+
+dfMaster.rename(index=str, columns={'system:indexviejuno':'pixel'},inplace=True)
+
+def index_to_datetime(arg):
+    date = pd.to_datetime(arg.split('_')[0])
+    return date
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################
+############## MET ###############
+##################################
+
+# Pre processes meteorological data
+print "Loading Meteorological data..." + crop_id
+dfMasterMetnew = pd.read_csv(data_path + 'dailyMETEOmeteo' + crop_id + '_typyearmorepoints.csv')
+print 'Met data loaded'
+
+dfMasterMetnew.rename(index=str, columns={'system:indexviejuno':'pixel'},inplace=True)
+#dfMasterMetnew['year'] = dfMasterMetnew['system:index'].apply(lambda x: x.split("_")[0]).astype(int)
+
+dfMasterMet.drop(columns='year', inplace = True)
+
+pd.unique(dfMasterMet.pixel).size

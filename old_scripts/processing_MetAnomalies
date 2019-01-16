@@ -1,0 +1,61 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Aug 30 08:34:58 2018
+
+@author: brian
+"""
+
+import matplotlib.pyplot as plt 
+import numpy as np
+import pandas as pd
+import glob
+import scipy.stats as st
+
+
+
+
+crop_id = 23
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/'
+
+
+print "Reading Monthly Met dataframe from hardrive.."
+met = pd.read_csv(data_path + 'MeteorMonthly_experiment_' + crop_id + ".csv")
+ndvi = pd.read_csv(data_path + 'VegInd3_' + crop_id + ".csv")    
+del ndvi['system:indexviejuno.1']
+met.date = pd.to_datetime(met.date).astype(str)
+dfMaster=None
+dfMaster = ndvi.merge(met, on = ['system:indexviejuno', 'date'])
+    
+print "Calculating VPD statistics...."
+meanVPD = dfMaster.groupby(['system:indexviejuno', 'month'])['vpd'].mean()
+stdVPD = dfMaster.groupby(['system:indexviejuno', 'month'])['vpd'].std()
+dfMaster = dfMaster.join(meanVPD, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdVPD, on=['system:indexviejuno', 'month'], rsuffix='std')
+dfMaster['zVPD'] = (dfMaster['vpd'] - dfMaster['vpdmean']) / dfMaster['vpdstd']
+#
+print "Calculating Precip statistics...."
+meanP = dfMaster.groupby(['system:indexviejuno', 'month'])['pr'].mean()
+stdP = dfMaster.groupby(['system:indexviejuno', 'month'])['pr'].std()
+dfMaster = dfMaster.join(meanP, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdP, on=['system:indexviejuno', 'month'], rsuffix='std')
+dfMaster['zP'] = (dfMaster['pr'] - dfMaster['prmean']) / dfMaster['prstd'] 
+
+print "Calculating Cumulative days with low pr statistics...."
+mean_cum_daysinarow_lowpr = dfMaster.groupby(['system:indexviejuno', 'month'])['cum_daysinarow_lowpr'].mean()
+std_cum_daysinarow_lowpr = dfMaster.groupby(['system:indexviejuno', 'month'])['cum_daysinarow_lowpr'].std()
+dfMaster = dfMaster.join(mean_cum_daysinarow_lowpr, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(std_cum_daysinarow_lowpr, on=['system:indexviejuno', 'month'], rsuffix='std')
+dfMaster['zCumDaysLowPr'] = (dfMaster['cum_daysinarow_lowpr'] - dfMaster['cum_daysinarow_lowprmean']) / dfMaster['cum_daysinarow_lowprstd'] 
+
+print "Calculating avgtemp statistics...."
+meanavgtemp = dfMaster.groupby(['system:indexviejuno', 'month'])['avgtemp'].mean()
+stdavgtemp = dfMaster.groupby(['system:indexviejuno', 'month'])['avgtemp'].std()
+dfMaster = dfMaster.join(meanavgtemp, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdavgtemp, on=['system:indexviejuno', 'month'], rsuffix='std')
+dfMaster['zavgtemp'] = (dfMaster['avgtemp'] - dfMaster['avgtempmean']) / dfMaster['avgtempstd'] 
+
+dfMaster.drop(['zcum_daysinarow_lowpr','ztmmn','ztmmx','zSRAD','zETR','zdaysabove30','zdaysbelow-5'], axis=1, inplace=True)
+
+dfMaster.to_csv(data_path + "dfMaster" + crop_id + ".csv")

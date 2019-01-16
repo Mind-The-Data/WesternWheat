@@ -1,0 +1,195 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 30 12:43:53 2018
+
+@author: brian
+"""
+import numpy as np
+from sompy.sompy import SOMFactory
+
+import pandas as pd
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+#sns.set(style="whitegrid")
+
+crop_id = 23
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/'
+
+met = pd.read_csv(data_path + 'MeteorMonthly_roll_' + crop_id + ".csv")
+ndvi = pd.read_csv(data_path + 'VegInd4_' + crop_id + ".csv")
+    
+# mess with data types in individual ararys, for a clean merge
+met.date = pd.to_datetime(met.date).astype(str)
+met.month = met.month.astype(int)
+met.year = met.year.astype(int)
+# Merge
+dfMaster = None
+dfMaster = met.merge(ndvi, on = ['pixel', 'date','year','month'])
+##########################################################
+# Selecting subset of dataset that has maxNDVIsum3bool == True
+##########################################################
+df=dfMaster
+
+
+from functions import GrowingSeasonSelection
+maxdf = GrowingSeasonSelection(dfMaster)
+
+
+names = ['prsum3mean','VPDmean3mean','GDDmean3mean','drydayssum3mean']
+df = maxdf[names]#,'NDVIsum3']]#'GDDmean3mean','dayslowprsum3mean']]  #'NDVIsum3
+names = ['Precipitation','Vapor Pressure Deficit','Growing Degree Days','Cumulative Dry Days']
+
+df = df.apply(pd.to_numeric,  errors='coerce')
+df = df.dropna(how='any')
+# Resetting index so it goes in order, since I only selected april, a standard index is all messed up april 2008 to april 2009 skips 
+#a ton of index values, and this makes it impossible to combine cluster output index with df 
+df.index
+df = df.reset_index(level=0)
+del df['index']
+
+
+##Investigating
+# 5*sqrt(row*column)
+df.info()
+dfdrop = df.drop_duplicates()
+dfdrop.info()
+
+topo = []
+quant = []
+i = 10
+for i in range(5,11,1):
+    som = SOMFactory().build(df.values, mapsize=[i,i], normalization = 'var', initialization='pca', component_names=names,\
+                    neighborhood = 'gaussian', lattice='rect')
+    som.train(n_job=1, verbose='info', train_rough_len=10, train_finetune_len=50)
+    topo.append(som.calculate_topographic_error())
+    quant.append(np.mean(som._bmu[1]))
+    print i
+plt.scatter(topo,quant, c=np.arange(5,11,1), s=50)
+plt.title('Self Organizing Map')
+plt.xlabel('Topographic Error')
+plt.ylabel('Quantization Error')
+plt.colorbar(label='grid size nxn')
+
+
+# The quantization error: average distance between each data vector and its BMU.
+# The topographic error: the proportion of all data vectors for which first and second BMUs are not adjacent units.
+topographic_error = som.calculate_topographic_error()
+quantization_error = np.mean(som._bmu[1])
+print "Topographic error = %s; Quantization error = %s" % (topographic_error, quantization_error)
+
+from sompy.visualization.mapview import View2D
+view2D  = View2D(4,4,"rand data",text_size=16)
+view2D.show(som, col_sz=2, which_dim="all", denormalize=True)
+
+# U-matrix plot
+from sompy.visualization.umatrix import UMatrixView
+
+umat  = UMatrixView(width=10,height=10,title='U-matrix')
+umat.show(som)
+
+
+
+from sompy.visualization.hitmap import HitMapView
+from sompy.visualization.bmuhits import BmuHitsView
+bmuhitsview = BmuHitsView(12,12,'Data per node', text_size=24)
+bmuhitsview.show(som, anotate=False, onlyzeros=False, labelsize=7, logaritmic=False)
+
+for i in K:
+    Kluster = som.cluster(i)
+    hits  = HitMapView(20,20,"K-Means Clustering",text_size=16)
+    a=hits.show(som)
+
+
+
+
+
+def HowManyK(k):
+    '''compute SSE for up to k clusters'''
+    
+    SSE = np.empty(0)
+    K = np.arange(2,k)
+    for i in K:
+        totalERROR = 0
+        map_labels = som.cluster(n_clusters=i)
+        data_labels = np.array([map_labels[int(x)] for x in som._bmu[0]]) # mapping labels from size of grid to total size of df
+        clusters = pd.Series(data_labels)
+        clusters = clusters.rename('cluster').to_frame()
+        #concat cluster column with small original som input df
+        df_labeled = None
+        df_labeled = pd.concat([df,clusters], axis=1)
+        
+        ########### normalize
+        df_labeled['zp'] = (df_labeled['prsum3mean']-df_labeled['prsum3mean'].mean())/df_labeled['prsum3mean'].std()
+        df_labeled['zvpd'] = (df_labeled['VPDmean3mean']-df_labeled['VPDmean3mean'].mean())/df_labeled['VPDmean3mean'].std()
+        df_labeled['zdry'] = (df_labeled['drydayssum3mean']-df_labeled['drydayssum3mean'].mean())/df_labeled['drydayssum3mean'].std()    
+        df_labeled['zgdd'] = (df_labeled['GDDmean3mean']-df_labeled['GDDmean3mean'].mean())/df_labeled['GDDmean3mean'].std()
+        
+        for j in range(1,pd.unique(df_labeled.cluster).size):
+            
+            dfi = df_labeled[df_labeled.cluster==j]
+            clustererror = ((dfi.zp - dfi.zp.mean())**2).cumsum().max() + ((dfi.zvpd - dfi.zvpd.mean())**2).cumsum().max() +\
+                    ((dfi.zdry - dfi.zdry.mean())**2).cumsum().max() + ((dfi.zgdd - dfi.zgdd.mean())**2).cumsum().max()
+            totalERROR += clustererror
+            
+        SSE = np.append(SSE,totalERROR)
+        #print '...'
+    
+    plt.scatter(K, SSE, s=10)
+    plt.title('K means elbow plot')
+    plt.ylabel('Sum Square Error')
+    plt.xlabel('# of clusters chosen')
+    
+    return SSE
+
+
+
+
+def bootstrap(runs,k):
+    '''run k means error analysis multiple times (runs), average the results and expect a more representative elbow plot.'''
+    SSE_Matrix = np.empty(0)
+    for i in range(runs):
+        print i
+        #SSE_Matrix = np.stack(HowManyK(k), axis=0)
+        SSE_Matrix = np.append(SSE_Matrix, HowManyK(k))
+        
+        #print SSE_Matrix
+        
+    return SSE_Matrix.reshape(runs,k-2)
+
+SSE_Matrix = bootstrap(runs=10,k=20)
+
+##################### average columns in 
+
+SSE_Matrix = np.mean(SSE_Matrix, axis=0)
+
+# SSE of K-means
+
+plt.plot(np.arange(2,SSE_Matrix.size+2), SSE_Matrix)
+plt.title('K-Means Optimal k')
+plt.xlabel('Number of Clusters, k')
+plt.ylabel('Sum Square Error')
+
+
+
+
+#som.cluster() returns the k-means cluster labels for each neuron of the map, 
+#but it is straightforward to retrieve the cluster labels for the whole training set, 
+#by assigning them the label of the BMUs (best-matching units). You can can do for example:
+#Make sure indices line up.... 
+map_labels = som.cluster(n_clusters=8)
+# som._bmu[0]
+data_labels = np.array([map_labels[int(k)] for k in som._bmu[0]]) # mapping labels from size of grid to total size of df
+clusters = pd.Series(data_labels)
+clusters = clusters.rename('cluster').to_frame()
+#concat cluster column with small original som input df
+df_labeled = None
+df_labeled = pd.concat([df,clusters], axis=1)
+
+
+##### merging df_label with original large df #####
+maxdf_labeled = pd.merge(maxdf, df_labeled)
+
+

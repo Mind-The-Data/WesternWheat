@@ -1,0 +1,146 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Sep 10 16:42:21 2018
+
+@author: brian
+"""
+import matplotlib.pyplot as plt 
+import numpy as np
+import pandas as pd
+import glob
+import scipy.stats as st
+import seaborn as sns
+from datetime import datetime
+
+
+crop_id = 23
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/'
+
+
+ndvi = pd.read_csv(data_path + 'VegInd3_' + crop_id + ".csv")    
+met = pd.read_csv(data_path + 'MeteorMonthly_experiment_' + crop_id + ".csv")   
+del ndvi['system:indexviejuno.1']
+met.date = pd.to_datetime(met.date).astype(str)
+dfMaster=None
+dfMaster = ndvi.merge(met, on = ['system:indexviejuno', 'date'])
+##### DatetimeIndex set with frequency M
+dfMaster.index = pd.DatetimeIndex(dfMaster.date)
+dfMaster = dfMaster.to_period('M')
+dfMaster.date = pd.to_datetime(dfMaster.date)
+dfMaster.date = dfMaster.date.to_period('M')
+
+df = dfMaster
+
+df = ndvi
+
+
+##############################
+##############################
+############################
+########ROLLING WINDOW CALC
+###########################
+##########################
+##########################
+#LOAD DATA
+df=ndvi
+df.index = pd.to_datetime(df.date)
+# simple first
+one=None
+one = df.loc[(df['system:indexviejuno']==42510.0)]
+
+#NDVImean3=one.groupby('year').rolling(3).NDVI.mean()
+#NDVImean3.index
+#one['NDVImean3'] = NDVImean3.reset_index(level=0, drop=True)
+NDVIsum3=None
+NDVIsum2 = one.groupby('year').rolling(2).NDVI.sum()
+NDVIsum2 = NDVIsum2.reset_index(level=0)
+one = one.join(NDVIsum2, rsuffix='sum2')
+one.plot(x='fractionofyear',y='NDVI'), one.plot(x='fractionofyear',y='NDVIsum3')
+one.plot(x='month',y='NDVI'), one.plot(x='month',y='NDVIsum2')
+
+
+plt.figure()
+
+one.plot(x='fractionofyear', y='NDVIsum3')
+one.plot(x='fractionofyear', y='NDVImean3')
+one.plot(x='fractionofyear', y='NDVI')
+
+
+
+
+NDVIsum3=None
+NDVIsum3 = df.groupby(['system:indexviejuno','year']).rolling(3).NDVI.sum()
+
+NDVIsum3 = NDVIsum3.reset_index(level=[0,1])
+#NDVIsum3.index = NDVIsum3.level_2
+df = df.merge(NDVIsum3, left_index=True, right_index=True)
+
+df = df.merge(NDVIsum3, on=['system:indexviejuno'])
+#NDVIsum3 = NDVIsum3.reset_index()
+#NDVIsum3.index = pd.DatetimeIndex(df.date)
+#NDVIsum3 = NDVIsum3.to_period('M')
+#dates dont line up... what happened???
+
+df=df.join(NDVIsum3, rsuffix='sum3')
+
+
+
+
+
+
+df=pd.DataFrame([2,5,3,9])
+
+df.rolling(3, center=True).sum()
+df.rolling(3).sum()
+
+
+
+
+
+
+
+
+
+
+#############################
+#############################
+#############################
+#   SMALL TEST DF
+#############################
+#############################
+#############################
+
+
+smalldf = pd.DataFrame(
+    [
+     [datetime(2016, 1, 9), 1000, 1.9],
+     [datetime(2016, 1, 8), 1001, 1.9],
+     [datetime(2016, 1, 7), 1001, 2],
+     [datetime(2016, 1, 7), 1000, 5],
+     [datetime(2016, 1, 8), 1000, 2],
+     [datetime(2016, 1, 1), 1000, 5], 
+     [datetime(2016, 1, 1), 1001, .1], 
+     [datetime(2016, 1, 2), 1000, 2],
+     [datetime(2016, 1, 5), 1000, .2],
+     [datetime(2016, 1, 6), 1000, .1],
+     [datetime(2016, 1, 6), 1001, .2],
+     [datetime(2016, 1, 2), 1001, .5], 
+     [datetime(2016, 1, 3), 1000, 0], 
+     [datetime(2016, 1, 3), 1001, 5], 
+     [datetime(2016, 1, 4), 1000, 0], 
+     [datetime(2016, 1, 4), 1001, 0],
+     [datetime(2017, 1, 1), 1001, 0],
+     [datetime(2017, 1, 2), 1001, 0],
+     [datetime(2017, 1, 3), 1001, 0],
+     [datetime(2017, 1, 4), 1001, 2],
+     [datetime(2017, 1, 5), 1001, 0],
+     [datetime(2017, 1, 1), 1000, 0],
+     [datetime(2017, 1, 2), 1000, 0],
+     [datetime(2017, 1, 3), 1000, 3],
+     [datetime(2017, 1, 4), 1000, 0],
+    ], 
+    columns=['date', 'spatial_pixel', 'column_A'])
+
+

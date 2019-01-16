@@ -1,0 +1,37 @@
+# -*- coding: utf-8 -*-
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import statsmodels.formula.api as sm
+
+datapath = '../Data/Processed/'
+df23June = pd.read_csv(datapath + 'df23June.csv')
+df23June.index=df23June['system:indexviejuno']
+
+###STATS#####
+
+model = sm.ols(formula='NDVI ~ VPD + P', data = df23June).fit()
+#res_fit = sm.OLS(ols_resid[1:], ols_resid[;-1]).fit
+print model.params
+print model.summary()
+
+
+###########################
+## PLOTTING
+###########################
+savepath = '../Images/Graphs/JuneAcrossAllPixels'
+FractionofYear = df23June['fractionofyear']
+MeanNDVI = df23June['NDVImean']
+VPD = df23June['VPD']
+P = df23June['P']
+
+sns.kdeplot(MeanNDVI)
+#plt.title('June NDVI (notice 115 mile swaths)')
+#plt.savefig(savepath + '/MeanNDVIdistribution.png')
+sns.kdeplot(VPD)
+#plt.savefig(savepath)
+sns.kdeplot(P)
+#plt.savefig(savepath + '/Pdistribution')
+
+sns.kdeplot(P,VPD)

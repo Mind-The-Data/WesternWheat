@@ -1,0 +1,363 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug  7 17:47:55 2018
+
+@author: brian
+"""
+import pandas as pd
+import seaborn as sns
+import numpy as np
+
+
+
+crop_id = 24
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/'
+
+print "Reading CDL dataframe from harddrive..."
+dfCDL = pd.read_csv(data_path + "CDL" + crop_id + ".csv", usecols=['system:index','countyears','cropland_mode','first','system:indexviejuno'])
+dfCDL['year'] = dfCDL['system:index'].apply(lambda x: x.split("_")[0]).astype(int)
+
+dfMaster = None
+dfMaster = pd.DataFrame()
+print "Loading EM spectral dataframes..."
+for f in glob.glob(data_path + 'monthlyLSclass' + crop_id + '*'):
+    dfMaster = pd.concat((dfMaster,  pd.read_csv(f)))
+
+print 'Performing Marcos date magic....'
+# for 23 I had to add one to month as fractionofyear started at 2008.00 and ended at 2008.916 ... 
+# Then make sure date calculation is correct. 
+dfMaster['month'] = (((dfMaster['fractionofyear'] - dfMaster['fractionofyear'].astype(int))*12).round().astype(int)+1)
+dfMaster['year'] = (np.modf(dfMaster['fractionofyear'])[1]).astype(int)
+dfMaster['date'] = pd.to_datetime(dfMaster.year * 100 + (dfMaster.month), format='%Y%m')
+dfMaster.index = dfMaster['date']
+dfMaster = dfMaster.to_period('M')
+# these two lines below not necessary... as dfMaster already has cropland_mode
+#lkupTable = dfCDL.pivot('year', 'system:indexviejuno', 'first')
+#dfMaster['CDL'] = lkupTable.lookup(dfMaster['year'], dfMaster['system:indexviejuno'])
+print "Crop/fallow pixel filtering..."
+dfMaster = dfMaster.loc[dfMaster['cropland_mode'] == float(crop_id)]
+####
+# Investigating remote sensing data structure
+#dfMaster.groupby(['system:indexviejuno', 'month'])['B1'].count()
+###
+print "Calculating Vegetation Indices..."
+dfMaster.index = dfMaster['system:indexviejuno']
+dfMaster.dropna(inplace=True)
+dfMaster['NDVI'] = (dfMaster['B4'] - dfMaster['B3'])/(dfMaster['B4'] + dfMaster['B3'])
+dfMaster['EVI'] = 2.5*(dfMaster['B4'] - dfMaster['B3'])/(dfMaster['B4'] + 6*dfMaster['B3']-7.5*dfMaster['B1']+1)
+dfMaster['NDWI1'] = (dfMaster['B4'] - dfMaster['B5'])/(dfMaster['B4'] + dfMaster['B5'])
+dfMaster['NDWI2'] = (dfMaster['B4'] - dfMaster['B7'])/(dfMaster['B4'] + dfMaster['B7'])
+
+
+
+#tell me how many points we throw out
+# initially I did below -1, however I had one point between 0 and -1 NDVI I want to throw out. 
+NDVI_datapointsthrownout = dfMaster.loc[(dfMaster.NDVI<0) | (dfMaster.NDVI>1)].count()
+EVI_datapointsthrownout = dfMaster.loc[(dfMaster.EVI<-2) | (dfMaster.EVI>2)].count()
+print "NDVI data points thrown out: " +str(NDVI_datapointsthrownout.NDVI)
+print "EVI data points thrown out: " +str(EVI_datapointsthrownout.EVI)
+#Investigating
+#df = dfMaster.loc[(dfMaster.NDVI<-1) | (dfMaster.NDVI>1)]
+pd.set_option('display.max_columns', 25)
+neg =dfMaster.loc[(dfMaster.B3<0)]
+#neg.info()
+#df
+#dfMaster.B3.sort_values().head(5)
+#dfMaster.B4.sort_values().head(5)
+
+#Throwing out points...
+dfMaster=dfMaster.loc[(dfMaster.NDVI > 0.) & (dfMaster.NDVI <1.)]
+dfMaster=dfMaster.loc[(dfMaster.EVI > -2.) & (dfMaster.EVI <2.)]
+
+
+meanNDVI = dfMaster.groupby(['system:indexviejuno', 'month'])['NDVI'].mean()
+stdNDVI = dfMaster.groupby(['system:indexviejuno', 'month'])['NDVI'].std()
+#maxNDVI = dfMaster.groupby(['system:indexviejuno', 'month', 'year'])['NDVI'].max()
+#NDVI = dfMaster.groupby(['system:indexviejuno', 'month' , 'year'])['NDVI'].mean()
+
+meanEVI = dfMaster.groupby(['system:indexviejuno', 'month'])['EVI'].mean()
+stdEVI = dfMaster.groupby(['system:indexviejuno', 'month'])['EVI'].std()
+#maxEVI = dfMaster.groupby(['system:indexviejuno', 'month', 'year'])['EVI'].max()
+#EVI = dfMaster.groupby(['system:indexviejuno', 'month','year'])['EVI'].mean()
+
+meanNDWI1 = dfMaster.groupby(['system:indexviejuno', 'month'])['NDWI1'].mean()
+stdNDWI1 = dfMaster.groupby(['system:indexviejuno', 'month'])['NDWI1'].std()
+#NDWI1 = dfMaster.groupby(['system:indexviejuno', 'month' ,'year'])['NDWI1'].mean()
+
+meanNDWI2 = dfMaster.groupby(['system:indexviejuno', 'month'])['NDWI2'].mean()
+stdNDWI2 = dfMaster.groupby(['system:indexviejuno', 'month'])['NDWI2'].std()
+#NDWI2 = dfMaster.groupby(['system:indexviejuno', 'month' ,'year'])['NDWI2'].mean()
+
+print "Joining vegetation indices arrays into dfMaster..."
+dfMaster = dfMaster.join(meanNDVI, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdNDVI, on=['system:indexviejuno', 'month'], rsuffix='std')
+#dfMaster = dfMaster.join(maxNDVI, on=['system:indexviejuno', 'month' ,'year'], rsuffix='max')
+#dfMaster = dfMaster.join(NDVI, on=['system:indexviejuno', 'month', 'year'], rsuffix='monthly')
+
+dfMaster = dfMaster.join(meanEVI, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdEVI, on=['system:indexviejuno', 'month'], rsuffix='std')
+#dfMaster = dfMaster.join(EVI, on=['system:indexviejuno', 'month', 'year'], rsuffix='monthly')
+#dfMaster = dfMaster.join(maxEVI, on=['system:indexviejuno', 'month' ,'year'], rsuffix='max')
+
+dfMaster = dfMaster.join(meanNDWI1, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdNDWI1, on=['system:indexviejuno', 'month'], rsuffix='std')
+#dfMaster = dfMaster.join(NDWI1, on=['system:indexviejuno', 'month', 'year'], rsuffix='monthly')
+
+dfMaster = dfMaster.join(meanNDWI2, on=['system:indexviejuno', 'month'], rsuffix='mean')
+dfMaster = dfMaster.join(stdNDWI2, on=['system:indexviejuno', 'month'], rsuffix='std')
+#dfMaster = dfMaster.join(NDWI2, on=['system:indexviejuno', 'month', 'year'], rsuffix='monthly')
+
+print 'Calculating Anomalies...'
+dfMaster['zNDVI'] = (dfMaster['NDVI'] - dfMaster['NDVImean']) / dfMaster['NDVIstd']
+dfMaster['zEVI'] = (dfMaster['EVI'] - dfMaster['EVImean']) / dfMaster['EVIstd']
+dfMaster['zNDWI1'] = (dfMaster['NDWI1'] - dfMaster['NDWI1mean']) / dfMaster['NDWI1std']
+dfMaster['zNDWI2'] = (dfMaster['NDWI2'] - dfMaster['NDWI2mean']) / dfMaster['NDWI2std']
+
+
+
+
+#0.707107 comes up A LOT
+#Mostly in winter months... snow? clouds? 
+dfMaster.loc[np.isclose(dfMaster['zNDVI'].abs(), 0.707107), 'zNDVI'] = np.nan
+
+## Investigating anomalies
+### Lots of values near that abs 0.707107 value... can't just delete... right?
+'''
+dfMaster.zNDVI.sort_values().head()
+dfMaster.zNDVI.sort_values().tail()
+dfMaster.zNDVI.describe()
+dfMaster.zNDVI.value_counts().sort_values()
+dfMaster.zEVI.value_counts().sort_values()
+dfMaster.zNDWI1.value_counts().sort_values()
+dfMaster.zNDWI2.value_counts().sort_values()
+
+df = dfMaster.loc[np.isclose(dfMaster['zNDVI'].abs(), .7071)]
+df['system:indexviejuno'].value_counts()
+df.B5.value_counts()
+df.NDVI.value_counts()
+df.NDVI.value_counts().sort_values()
+df.columns
+df.NDVImean.value_counts()
+df.NDVIstd.value_counts()
+df.zNDVI.value_counts()
+df.NDVI
+df.Latitude.value_counts()
+df.Longitude.value_counts()
+df.month.value_counts()
+#compared to dfmaster... how likely is this?
+dfMaster.Longitude.value_counts()
+dfMaster.Latitude.value_counts()
+dfMaster.NDVI.value_counts()
+dfMaster.NDVImean.value_counts()
+dfMaster.NDVIstd.value_counts()
+
+dfSpring = dfMaster.loc[(dfMaster['month'] > 1) & (dfMaster['month']< 5)]
+dfSpring.Longitude.value_counts()
+dfSpring.Latitude.value_counts()
+dfSpring.NDVI.value_counts()
+dfSpring.NDVImean.value_counts()
+dfSpring.NDVIstd.value_counts()
+dfSpring.zNDVI.value_counts()
+
+dfspring = dfMaster.loc[np.isclose(dfMaster['zNDVI'].abs(), .7071) & (dfMaster['month'] > 1) & (dfMaster['month']< 5)]
+dfspring.Longitude.value_counts()
+dfspring.Latitude.value_counts()
+dfspring.NDVI.value_counts()
+dfspring.NDVImean.value_counts()
+dfspring.NDVIstd.value_counts()
+dfspring.zNDVI.value_counts()
+'''
+###### GEO split
+dfMaster['.geo'] = dfMaster['.geo'].map(lambda x: str(x)[47:])    #deleting strings in column .geo
+dfMaster['.geo'] = dfMaster['.geo'].map(lambda x: str(x)[:-2])
+dfMaster['Longitude'], dfMaster['Latitude']= dfMaster['.geo'].str.split(',', 1).str
+
+
+###############################
+#######################investigating ndvi debacle
+dfMaster['system:indexviejuno'].unique
+dfMaster.index.unique
+
+dfMaster.info
+
+dfMasterSummer = dfMaster.loc[(dfMaster.month>2) & (dfMaster.month<9)]
+dfMasterGrow = dfMaster.loc[(dfMaster.month>1) & (dfMaster.month<5)]
+dfMasterHarvest = dfMaster.loc[(dfMaster.month>3) & (dfMaster.month<9)]
+
+
+dfMasterJan = dfMaster.loc[(dfMaster['month'] ==1)]
+dfMasterFeb = dfMaster.loc[(dfMaster['month'] ==2)]
+dfMasterMarch = dfMaster.loc[(dfMaster['month'] ==3)]
+dfMasterApril = dfMaster.loc[(dfMaster['month'] ==4)]
+dfMasterMay = dfMaster.loc[(dfMaster['month'] ==5)]
+dfMasterJune = dfMaster.loc[(dfMaster['month'] ==6)]
+dfMasterJuly = dfMaster.loc[(dfMaster['month'] ==7)]
+dfMasterAug= dfMaster.loc[(dfMaster['month'] ==8)]
+dfMasterSep = dfMaster.loc[(dfMaster['month'] ==9)]
+dfMasterOct = dfMaster.loc[(dfMaster['month'] ==10)]
+dfMasterNov = dfMaster.loc[(dfMaster['month'] ==11)]
+dfMasterDec = dfMaster.loc[(dfMaster['month'] ==12)]
+
+
+sns.kdeplot(dfMasterFeb.NDVI)
+sns.kdeplot(dfMasterMarch.NDVI)
+sns.kdeplot(dfMasterApril.NDVI)
+sns.kdeplot(dfMasterMay.NDVI)
+sns.kdeplot(dfMasterJune.NDVI)
+sns.kdeplot(dfMasterJuly.NDVI)
+sns.kdeplot(dfMasterAug.NDVI)
+sns.kdeplot(dfMasterSep.NDVI)
+sns.kdeplot(dfMasterOct.NDVI)
+sns.kdeplot(dfMasterNov.NDVI)
+sns.kdeplot(dfMasterDec.NDVI)
+
+plt.scatter(dfMaster.fractionofyear, dfMaster.NDVI, s=.001)
+plt.scatter(dfMaster.loc[(dfMaster.year == 2012)].month, dfMaster.loc[(dfMaster.year == 2012)].NDVI, s =.01)
+
+
+
+#print dfMaster
+
+
+
+
+id_pixel = pd.unique(dfMaster.index)
+
+p = None
+p50 = None
+p500 = None
+p1000 = None
+p1500 = None
+p1900  = None
+
+p = dfMaster[dfMaster.index==id_pixel[0]]
+p50 = dfMaster[dfMaster.index==id_pixel[50]]
+p500 = dfMaster[dfMaster.index==id_pixel[500]]
+p1000 = dfMaster[dfMaster.index==id_pixel[1000]]
+p1500 = dfMaster[dfMaster.index==id_pixel[1500]]
+p1900 = dfMaster[dfMaster.index==id_pixel[1900]]
+
+
+#plt.plot(p['fractionofyear'], p['NDVIanomaly'])
+plt.plot(p['fractionofyear'], p['NDVImean'])
+#plt.plot(p['fractionofyear'], p['NDVIstd'])
+plt.plot(p50['fractionofyear'], p50['NDVImean'])
+plt.plot(p500['fractionofyear'], p500['NDVImean'])
+
+plt.scatter(p['month'], p['NDVImean'])
+plt.scatter(p50['month'], p50['NDVImean'])
+plt.scatter(p500['month'], p500['NDVImean'])
+plt.scatter(p1000['month'], p1000['NDVImean'])
+plt.scatter(p1500['month'], p1500['NDVImean'])
+plt.scatter(p1900['month'], p1900['NDVImean'])
+
+plt.scatter(dfMasterSummer.month, dfMasterSummer.NDVImean, s=.0001)
+sns.violinplot(x = 'month', y = 'NDVImean', data= dfMasterGrow)
+sns.violinplot(x = 'month', y = 'NDVI', data= dfMasterGrow)
+sns.violinplot(x = 'month', y = 'NDVImean', data= dfMasterHarvest)
+sns.violinplot(x = 'month', y = 'NDVI', data= dfMasterHarvest)
+sns.violinplot(x = 'month', y = 'NDVI', data= dfMaster)
+sns.violinplot(x = 'month', y = 'NDVImean', data= dfMaster)
+#empy df for some reason....
+df = dfMaster.loc[(dfMaster.Latitude<40) & (dfMaster.Latitude>30)]
+
+############
+## by cluster here ummm kay 
+############
+sns.violinplot(x = 'year', y = 'NDVI', data=df, hue='cluster')
+sns.violinplot(x = 'month', y = 'NDVI', data=df, hue='cluster')
+
+
+
+
+plt.scatter(p['month'], p['NDVImean'])
+plt.scatter(p50['month'], p50['NDVImean'])
+plt.scatter(p500['month'], p500['NDVImean'])
+plt.scatter(p1000['month'], p1000['NDVImean'])
+plt.scatter(p1500['month'], p1500['NDVImean'])
+plt.scatter(p1900['month'], p1900['NDVImean'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########### earlier version preprocessing v.1 from umbox
+
+import matplotlib.pyplot as plt 
+import numpy as np
+import pandas as pd
+import glob
+import scipy.stats as st
+
+
+def index_to_datetime(arg):
+    date = pd.to_datetime(arg.split('_')[0])
+    return date
+
+crop_id = 23
+crop_id = str(crop_id)
+data_path = '../rawData/AgMet/'
+
+print "Reading CDL dataframe from harddrive..."
+dfCDL = pd.read_csv(data_path + "CDL" + crop_id + ".csv", usecols=['system:index','countyears','cropland_mode','first','system:indexviejuno'])
+dfCDL['year'] = dfCDL['system:index'].apply(lambda x: x.split("_")[0]).astype(int)
+
+
+dfMaster = pd.DataFrame()
+print "Loading EM spectral dataframes..."
+for f in glob.glob(data_path + 'monthlyLSclass' + crop_id + '*'):
+    dfMaster = pd.concat((dfMaster,  pd.read_csv(f)))
+
+print 'Performing Marcos date magic....'
+dfMaster['month'] = ((dfMaster['fractionofyear'] - dfMaster['fractionofyear'].astype(int))*12).round().astype(int)
+dfMaster['year'] = (np.modf(dfMaster['fractionofyear'])[1]).astype(int)
+dfMaster['date'] = pd.to_datetime(dfMaster.year * 10000 + (dfMaster.month+1)*100+1, format='%Y%m%d')
+dfMaster.index = dfMaster['date']
+dfMaster = dfMaster.to_period('M')
+# these two lines below not necessary... as dfMaster already has cropland_mode
+#lkupTable = dfCDL.pivot('year', 'system:indexviejuno', 'first')
+#dfMaster['CDL'] = lkupTable.lookup(dfMaster['year'], dfMaster['system:indexviejuno'])
+print "Crop/fallow pixel filtering..."
+dfMaster = dfMaster.loc[dfMaster['cropland_mode'] == float(crop_id)]
+####
+# Investigating remote sensing data structure
+#dfMaster.groupby(['system:indexviejuno', 'month'])['B1'].count()
+###
+print "Calculating Vegetation Indices..."
+dfMaster.index = dfMaster['system:indexviejuno']
+dfMaster.dropna(inplace=True)
+dfMaster['NDVI'] = (dfMaster['B4'] - dfMaster['B3'])/(dfMaster['B4'] + dfMaster['B3'])
+dfMaster['EVI'] = 2.5*(dfMaster['B4'] - dfMaster['B3'])/(dfMaster['B4'] + 6*dfMaster['B3']-7.5*dfMaster['B1']+1)
+dfMaster['NDWI1'] = (dfMaster['B4'] - dfMaster['B5'])/(dfMaster['B4'] + dfMaster['B5'])
+dfMaster['NDWI2'] = (dfMaster['B4'] - dfMaster['B7'])/(dfMaster['B4'] + dfMaster['B7'])
+
+

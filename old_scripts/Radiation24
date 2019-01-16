@@ -1,0 +1,20 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Mar 27 16:34:31 2018
+
+@author: brian
+"""
+
+import pandas as pd
+
+
+Radiation24_2008 = pd.read_csv("../Data/AgMet/monthlyLSclass242008.csv")
+Radiation24_2009 = pd.read_csv("../Data/AgMet/monthlyLSclass242009.csv")
+Radiation24_2010 = pd.read_csv("../Data/AgMet/monthlyLSclass242010.csv")
+Radiation24_2011 = pd.read_csv("../Data/AgMet/monthlyLSclass242011.csv")
+Radiation24_2012 = pd.read_csv("../Data/AgMet/monthlyLSclass242012.csv")
+Radiation24_2013_2017 = pd.read_csv("../Data/AgMet/monthlyLSclass24_2013_2017.csv")
+
+Radiation24_frames = [Radiation24_2008,Radiation24_2009,Radiation24_2010,Radiation24_2011,Radiation24_2012,Radiation24_2013_2017]
+Radiation24 = pd.concat(Radiation24_frames)
